@@ -43,8 +43,8 @@ export default function Dashboard() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="Mission control" subtitle="Live telemetry across the last 24 hours." />
-      <div className="p-8 space-y-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="p-4 sm:p-6 md:p-8 space-y-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
           <StatCard icon={Activity} label="Active runs" value={stats.active} accent="warning" pulse={stats.active > 0} />
           <StatCard icon={CheckCircle2} label="Success rate" value={`${successRate}%`} accent="success" />
           <StatCard icon={XCircle} label="Failures (24h)" value={stats.failed} accent="destructive" />
@@ -58,11 +58,11 @@ export default function Dashboard() {
           ) : (
             <div className="space-y-1">
               {recent.map(r => (
-                <Link key={r.id} to={`/runs/${r.id}`} className="flex items-center gap-4 px-3 py-2 rounded-md hover:bg-secondary/50 transition-colors">
+                <Link key={r.id} to={`/runs/${r.id}`} className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-secondary/50 transition-colors">
                   <StatusDot status={r.status} />
-                  <div className="font-mono text-sm flex-1 truncate">{r.workflows?.name ?? "workflow"}</div>
-                  <div className="text-xs text-muted-foreground font-mono">{r.duration_ms ? `${r.duration_ms}ms` : "—"}</div>
-                  <div className="text-xs text-muted-foreground font-mono">{new Date(r.created_at).toLocaleTimeString()}</div>
+                  <div className="font-mono text-sm flex-1 truncate min-w-0">{r.workflows?.name ?? "workflow"}</div>
+                  <div className="hidden sm:block text-xs text-muted-foreground font-mono">{r.duration_ms ? `${r.duration_ms}ms` : "—"}</div>
+                  <div className="text-xs text-muted-foreground font-mono whitespace-nowrap">{new Date(r.created_at).toLocaleTimeString()}</div>
                 </Link>
               ))}
             </div>

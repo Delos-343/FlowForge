@@ -104,7 +104,7 @@ export default function WorkflowDetail() {
     toast.success("Copied");
   };
 
-  if (!wf || !activeVer) return <div className="p-8 text-muted-foreground">Loading…</div>;
+  if (!wf || !activeVer) return <div className="p-4 sm:p-6 md:p-8 text-muted-foreground">Loading…</div>;
 
   let preview: any = null;
   try { preview = JSON.parse(json); } catch { /* */ }
@@ -118,7 +118,7 @@ export default function WorkflowDetail() {
           {canEdit && <Button onClick={run} className="bg-gradient-primary text-primary-foreground"><Play className="h-4 w-4 mr-2" />Run now</Button>}
         </div>
       } />
-      <div className="p-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="p-4 sm:p-6 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="surface p-4 lg:col-span-2">
           <div className="text-xs font-mono text-muted-foreground mb-2">DAG PREVIEW</div>
           {preview?.nodes ? <DagView dag={preview} height={420} /> : <div className="h-[420px] grid place-items-center text-muted-foreground">Invalid DAG</div>}

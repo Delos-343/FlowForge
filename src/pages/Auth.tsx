@@ -80,8 +80,8 @@ export default function Auth() {
         <p className="text-xs font-mono text-muted-foreground">v1.0 · interview build</p>
       </section>
 
-      <section className="flex items-center justify-center p-6">
-        <Card className="w-full max-w-md surface p-8 space-y-6 animate-fade-in">
+      <section className="flex items-center justify-center p-4 sm:p-6">
+        <Card className="w-full max-w-md surface p-6 sm:p-8 space-y-6 animate-fade-in">
           <header>
             <h2 className="text-2xl font-bold">{mode === "signin" ? "Welcome back" : "Create your workspace"}</h2>
             <p className="text-sm text-muted-foreground mt-1">

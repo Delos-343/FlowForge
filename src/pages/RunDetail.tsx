@@ -44,7 +44,7 @@ export default function RunDetail() {
     return () => { supabase.removeChannel(ch); };
   }, [id, profile]);
 
-  if (!run) return <div className="p-8 text-muted-foreground">Loading…</div>;
+  if (!run) return <div className="p-4 sm:p-6 md:p-8 text-muted-foreground">Loading…</div>;
 
   const statuses = Object.fromEntries(steps.map(s => [s.step_key, s.status]));
 
@@ -53,7 +53,7 @@ export default function RunDetail() {
       <PageHeader title={run.workflows?.name ?? "Run"} subtitle={`v${run.workflow_version} · ${run.trigger}`} action={
         <Button variant="ghost" asChild><Link to="/runs"><ChevronLeft className="h-4 w-4 mr-1" />Back</Link></Button>
       } />
-      <div className="p-8 space-y-6">
+      <div className="p-4 sm:p-6 md:p-8 space-y-6">
         <Card className="surface p-5 flex items-center gap-6 flex-wrap">
           <div className="flex items-center gap-2"><StatusDot status={run.status} /><span className="font-mono uppercase text-sm">{run.status}</span></div>
           <div className="text-sm"><span className="text-muted-foreground">Duration:</span> <span className="font-mono">{run.duration_ms ? `${run.duration_ms}ms` : "running…"}</span></div>

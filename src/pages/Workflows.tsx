@@ -64,7 +64,7 @@ export default function Workflows() {
       <PageHeader title="Workflows" subtitle="Define, version, and trigger your DAGs." action={
         canEdit && <Button onClick={() => setNewOpen(true)} className="bg-gradient-primary text-primary-foreground"><Plus className="h-4 w-4 mr-2" />New workflow</Button>
       } />
-      <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="p-4 sm:p-6 md:p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {items.length === 0 && <p className="text-muted-foreground">No workflows yet.</p>}
         {items.map(w => (
           <Card key={w.id} className="surface p-5 group hover:border-primary/40 transition-colors">

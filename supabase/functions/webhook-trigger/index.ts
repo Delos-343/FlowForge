@@ -49,7 +49,7 @@ Deno.serve(async (req) => {
         tenant_id: wf.tenant_id,
         workflow_id: wf.id,
         workflow_version: wf.current_version,
-        status: "queued",
+        status: "pending",
         trigger: "webhook",
         triggered_by: wf.created_by,
         started_at: new Date().toISOString(),

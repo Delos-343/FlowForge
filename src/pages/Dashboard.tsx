@@ -43,7 +43,7 @@ export default function Dashboard() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="Mission control" subtitle="Live telemetry across the last 24 hours." />
-      <div className="p-8 space-y-8">
+      <div className="p-4 sm:p-6 md:p-8 space-y-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <StatCard icon={Activity} label="Active runs" value={stats.active} accent="warning" pulse={stats.active > 0} />
           <StatCard icon={CheckCircle2} label="Success rate" value={`${successRate}%`} accent="success" />

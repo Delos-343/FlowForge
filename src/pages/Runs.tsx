@@ -28,7 +28,7 @@ export default function Runs() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="Run history" subtitle={`${items.length} recent runs (live)`} />
-      <div className="p-8">
+      <div className="p-4 sm:p-6 md:p-8">
         <Card className="surface divide-y divide-border">
           {items.length === 0 && <div className="p-6 text-muted-foreground text-sm">No runs yet.</div>}
           {items.map(r => (

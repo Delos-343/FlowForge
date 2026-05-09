@@ -57,7 +57,7 @@ export default function AIBuilder() {
   return (
     <div className="animate-fade-in">
       <PageHeader title="AI workflow builder" subtitle="Describe what you want. We'll generate a valid DAG." />
-      <div className="p-8 grid lg:grid-cols-2 gap-6">
+      <div className="p-4 sm:p-6 md:p-8 grid lg:grid-cols-2 gap-6">
         <div className="space-y-4">
           <Card className="surface p-5">
             <Textarea value={prompt} onChange={e => setPrompt(e.target.value)} placeholder="e.g. Every morning at 9am, fetch the weather and post to Slack…"

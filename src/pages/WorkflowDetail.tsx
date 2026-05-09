@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import DagView from "@/components/DagView";
-import { Play, Save, RotateCcw, ChevronLeft } from "lucide-react";
+import { Play, Save, RotateCcw, ChevronLeft, Webhook, Copy, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { DagSchema } from "@/lib/dag";
 

@@ -145,6 +145,27 @@ export default function WorkflowDetail() {
               ))}
             </div>
           </Card>
+          <Card className="surface p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs font-mono text-muted-foreground flex items-center gap-2"><Webhook className="h-3 w-3" />WEBHOOK TRIGGER</div>
+              {canEdit && (
+                webhookUrl
+                  ? <Button size="sm" variant="ghost" onClick={revokeWebhook} className="text-destructive h-7">Revoke</Button>
+                  : <Button size="sm" variant="ghost" onClick={generateWebhook} className="h-7"><RefreshCw className="h-3 w-3 mr-1" />Generate</Button>
+              )}
+            </div>
+            {webhookUrl ? (
+              <div className="space-y-2">
+                <div className="flex gap-1">
+                  <code className="flex-1 text-[10px] font-mono bg-secondary/50 p-2 rounded break-all">{webhookUrl}</code>
+                  <Button size="sm" variant="outline" onClick={copyWebhook}><Copy className="h-3 w-3" /></Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground font-mono">POST with optional {'{ "input": {...} }'} body</p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">No webhook configured. Generate a token to expose a public trigger URL.</p>
+            )}
+          </Card>
         </div>
       </div>
     </div>

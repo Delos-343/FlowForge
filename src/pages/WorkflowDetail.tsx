@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import DagView from "@/components/DagView";
-import { Play, Save, RotateCcw, ChevronLeft } from "lucide-react";
+import { Play, Save, RotateCcw, ChevronLeft, Webhook, Copy, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { DagSchema } from "@/lib/dag";
 
@@ -77,6 +77,33 @@ export default function WorkflowDetail() {
     nav(`/runs/${j.run_id}`);
   };
 
+  const generateWebhook = async () => {
+    if (!wf) return;
+    const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+    const { error } = await supabase.from("workflows").update({ webhook_token: token }).eq("id", wf.id);
+    if (error) return toast.error(error.message);
+    toast.success("Webhook URL generated");
+    load();
+  };
+
+  const revokeWebhook = async () => {
+    if (!wf) return;
+    const { error } = await supabase.from("workflows").update({ webhook_token: null }).eq("id", wf.id);
+    if (error) return toast.error(error.message);
+    toast.success("Webhook revoked");
+    load();
+  };
+
+  const webhookUrl = wf?.webhook_token
+    ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/webhook-trigger/${wf.webhook_token}`
+    : null;
+
+  const copyWebhook = () => {
+    if (!webhookUrl) return;
+    navigator.clipboard.writeText(webhookUrl);
+    toast.success("Copied");
+  };
+
   if (!wf || !activeVer) return <div className="p-8 text-muted-foreground">Loading…</div>;
 
   let preview: any = null;
@@ -117,6 +144,27 @@ export default function WorkflowDetail() {
                 </div>
               ))}
             </div>
+          </Card>
+          <Card className="surface p-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-xs font-mono text-muted-foreground flex items-center gap-2"><Webhook className="h-3 w-3" />WEBHOOK TRIGGER</div>
+              {canEdit && (
+                webhookUrl
+                  ? <Button size="sm" variant="ghost" onClick={revokeWebhook} className="text-destructive h-7">Revoke</Button>
+                  : <Button size="sm" variant="ghost" onClick={generateWebhook} className="h-7"><RefreshCw className="h-3 w-3 mr-1" />Generate</Button>
+              )}
+            </div>
+            {webhookUrl ? (
+              <div className="space-y-2">
+                <div className="flex gap-1">
+                  <code className="flex-1 text-[10px] font-mono bg-secondary/50 p-2 rounded break-all">{webhookUrl}</code>
+                  <Button size="sm" variant="outline" onClick={copyWebhook}><Copy className="h-3 w-3" /></Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground font-mono">POST with optional {'{ "input": {...} }'} body</p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">No webhook configured. Generate a token to expose a public trigger URL.</p>
+            )}
           </Card>
         </div>
       </div>

@@ -1,0 +1,2 @@
+ALTER TABLE public.workflows ADD COLUMN IF NOT EXISTS webhook_token text UNIQUE;
+CREATE INDEX IF NOT EXISTS workflows_webhook_token_idx ON public.workflows(webhook_token) WHERE webhook_token IS NOT NULL;

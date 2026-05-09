@@ -166,41 +166,45 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return json({ error: "missing authorization" }, 401);
-    }
-    const token = authHeader.replace("Bearer ", "");
-
-    // Validate JWT and load user
-    const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error: userErr } = await userClient.auth.getUser(token);
-    if (userErr || !user) return json({ error: "invalid token" }, 401);
-
     const body = await req.json();
-    const { workflow_id, version, trigger = "manual", input = {} } = body ?? {};
-    if (!workflow_id) return json({ error: "workflow_id required" }, 400);
+    const { workflow_id, version, trigger = "manual", input = {}, run_id: existingRunId, _internal } = body ?? {};
 
+    const internalHeader = req.headers.get("x-internal-service-role");
+    const isInternal = _internal && internalHeader && internalHeader === SERVICE_ROLE;
+
+    let userId: string | null = null;
+    if (!isInternal) {
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader) return json({ error: "missing authorization" }, 401);
+      const token = authHeader.replace("Bearer ", "");
+      const userClient = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: { user }, error: userErr } = await userClient.auth.getUser(token);
+      if (userErr || !user) return json({ error: "invalid token" }, 401);
+      userId = user.id;
+    }
+
+    if (!workflow_id) return json({ error: "workflow_id required" }, 400);
     const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-    // Load workflow + check tenant + role
     const { data: wf, error: wfErr } = await admin
       .from("workflows")
-      .select("id, tenant_id, current_version, name")
+      .select("id, tenant_id, current_version, name, created_by")
       .eq("id", workflow_id)
       .maybeSingle();
     if (wfErr || !wf) return json({ error: "workflow not found" }, 404);
 
-    const { data: roleRow } = await admin
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .eq("tenant_id", wf.tenant_id);
-    const roles = (roleRow ?? []).map((r: any) => r.role);
-    if (!roles.includes("admin") && !roles.includes("editor")) {
-      return json({ error: "forbidden" }, 403);
+    if (!isInternal) {
+      const { data: roleRow } = await admin
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId!)
+        .eq("tenant_id", wf.tenant_id);
+      const roles = (roleRow ?? []).map((r: any) => r.role);
+      if (!roles.includes("admin") && !roles.includes("editor")) {
+        return json({ error: "forbidden" }, 403);
+      }
     }
 
     const targetVersion = version ?? wf.current_version;
@@ -214,21 +218,30 @@ Deno.serve(async (req) => {
 
     const dag = ver.definition as Dag;
 
-    // Create run row
-    const { data: run, error: runErr } = await admin
-      .from("runs")
-      .insert({
-        tenant_id: wf.tenant_id,
-        workflow_id,
-        workflow_version: targetVersion,
-        status: "running",
-        trigger,
-        triggered_by: user.id,
-        started_at: new Date().toISOString(),
-      })
-      .select()
-      .single();
-    if (runErr || !run) return json({ error: runErr?.message }, 500);
+    let run: any;
+    if (existingRunId) {
+      const { data } = await admin.from("runs")
+        .update({ status: "running" })
+        .eq("id", existingRunId)
+        .select().single();
+      run = data;
+    } else {
+      const { data, error: runErr } = await admin
+        .from("runs")
+        .insert({
+          tenant_id: wf.tenant_id,
+          workflow_id,
+          workflow_version: targetVersion,
+          status: "running",
+          trigger,
+          triggered_by: userId ?? wf.created_by,
+          started_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+      if (runErr || !data) return json({ error: runErr?.message }, 500);
+      run = data;
+    }
 
     // Pre-create all step_runs in 'pending'
     const stepRows = dag.nodes.map((n) => ({

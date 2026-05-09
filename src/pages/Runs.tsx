@@ -32,13 +32,23 @@ export default function Runs() {
         <Card className="surface divide-y divide-border">
           {items.length === 0 && <div className="p-6 text-muted-foreground text-sm">No runs yet.</div>}
           {items.map(r => (
-            <Link key={r.id} to={`/runs/${r.id}`} className="flex items-center gap-4 px-5 py-3 hover:bg-secondary/40 transition-colors">
+            <Link key={r.id} to={`/runs/${r.id}`} className="flex items-center gap-3 px-4 sm:px-5 py-3 hover:bg-secondary/40 transition-colors">
               <StatusDot status={r.status} />
-              <div className="font-mono text-sm flex-1 truncate">{r.workflows?.name}</div>
-              <div className="text-xs font-mono text-muted-foreground">v{r.workflow_version}</div>
-              <div className="text-xs font-mono text-muted-foreground">{r.trigger}</div>
-              <div className="text-xs font-mono text-muted-foreground w-24 text-right">{r.duration_ms ? `${r.duration_ms}ms` : "…"}</div>
-              <div className="text-xs font-mono text-muted-foreground w-44 text-right">{new Date(r.created_at).toLocaleString()}</div>
+              <div className="min-w-0 flex-1">
+                <div className="font-mono text-sm truncate">{r.workflows?.name}</div>
+                <div className="flex gap-2 text-[10px] font-mono text-muted-foreground sm:hidden">
+                  <span>v{r.workflow_version}</span>
+                  <span>·</span>
+                  <span>{r.trigger}</span>
+                  <span>·</span>
+                  <span>{r.duration_ms ? `${r.duration_ms}ms` : "…"}</span>
+                </div>
+              </div>
+              <div className="hidden sm:block text-xs font-mono text-muted-foreground">v{r.workflow_version}</div>
+              <div className="hidden sm:block text-xs font-mono text-muted-foreground">{r.trigger}</div>
+              <div className="hidden sm:block text-xs font-mono text-muted-foreground w-20 text-right">{r.duration_ms ? `${r.duration_ms}ms` : "…"}</div>
+              <div className="hidden md:block text-xs font-mono text-muted-foreground w-44 text-right">{new Date(r.created_at).toLocaleString()}</div>
+              <div className="sm:hidden text-[10px] font-mono text-muted-foreground whitespace-nowrap">{new Date(r.created_at).toLocaleDateString()}</div>
             </Link>
           ))}
         </Card>

@@ -77,6 +77,33 @@ export default function WorkflowDetail() {
     nav(`/runs/${j.run_id}`);
   };
 
+  const generateWebhook = async () => {
+    if (!wf) return;
+    const token = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+    const { error } = await supabase.from("workflows").update({ webhook_token: token }).eq("id", wf.id);
+    if (error) return toast.error(error.message);
+    toast.success("Webhook URL generated");
+    load();
+  };
+
+  const revokeWebhook = async () => {
+    if (!wf) return;
+    const { error } = await supabase.from("workflows").update({ webhook_token: null }).eq("id", wf.id);
+    if (error) return toast.error(error.message);
+    toast.success("Webhook revoked");
+    load();
+  };
+
+  const webhookUrl = wf?.webhook_token
+    ? `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/webhook-trigger/${wf.webhook_token}`
+    : null;
+
+  const copyWebhook = () => {
+    if (!webhookUrl) return;
+    navigator.clipboard.writeText(webhookUrl);
+    toast.success("Copied");
+  };
+
   if (!wf || !activeVer) return <div className="p-8 text-muted-foreground">Loading…</div>;
 
   let preview: any = null;

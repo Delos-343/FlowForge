@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
       }),
     }).catch((e) => console.error("dispatch failed:", e));
 
-    return json({ run_id: run.id, status: "queued" }, 202);
+    return json({ run_id: run.id, status: "pending" }, 202);
   } catch (e) {
     console.error("webhook-trigger:", e);
     return json({ error: e instanceof Error ? e.message : "unknown" }, 500);

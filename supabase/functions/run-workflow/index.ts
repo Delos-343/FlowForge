@@ -64,12 +64,26 @@ function topoLayers(dag: Dag): string[][] {
   return layers;
 }
 
-/** Tiny safe template renderer: replaces {{ steps.<id>.<path> }} with prior outputs. */
+/** Tiny safe template renderer.
+ *  Supports:
+ *    {{ steps.<id>.<path> }}  -> prior step outputs
+ *    {{ input.<path> }}       -> workflow input
+ *    {{ <key>.<path> }}       -> any top-level ctx key
+ *    {{ <key> }}              -> single-token lookup
+ */
 function render(input: string, ctx: Record<string, any>): string {
-  return input.replace(/\{\{\s*steps\.([a-zA-Z0-9_-]+)\.([a-zA-Z0-9_.]+)\s*\}\}/g, (_, id, path) => {
-    let v: any = ctx[id];
-    for (const part of path.split(".")) v = v?.[part];
-    return v === undefined || v === null ? "" : String(v);
+  if (typeof input !== "string") return input;
+  return input.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_, expr) => {
+    const parts = String(expr).split(".");
+    let v: any;
+    if (parts[0] === "steps") {
+      v = ctx[parts[1]];
+      for (const p of parts.slice(2)) v = v?.[p];
+    } else {
+      v = ctx[parts[0]];
+      for (const p of parts.slice(1)) v = v?.[p];
+    }
+    return v === undefined || v === null ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
   });
 }
 
@@ -255,7 +269,7 @@ Deno.serve(async (req) => {
 
     // Kick off async execution; respond immediately with run id.
     const exec = (async () => {
-      const ctx: Record<string, any> = { ...input };
+      const ctx: Record<string, any> = { ...input, input: input ?? {} };
       const startedAt = Date.now();
       const timeoutMs = dag.timeout_ms ?? 60_000;
       let failed = false;

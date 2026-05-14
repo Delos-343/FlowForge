@@ -269,7 +269,7 @@ Deno.serve(async (req) => {
 
     // Kick off async execution; respond immediately with run id.
     const exec = (async () => {
-      const ctx: Record<string, any> = { ...input };
+      const ctx: Record<string, any> = { ...input, input: input ?? {} };
       const startedAt = Date.now();
       const timeoutMs = dag.timeout_ms ?? 60_000;
       let failed = false;

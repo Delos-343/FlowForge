@@ -116,8 +116,30 @@ async function runStep(node: DagNode, ctx: Record<string, any>) {
       return { status: res.status, body: parsed };
     }
     case "script": {
-      // No real eval. Render the expression and return the rendered string as result.
-      return { result: render(step.expression, ctx) };
+      // Evaluate the expression as a JS expression with access to prior step outputs.
+      // ctx already contains { ...input, input, <stepId>: <output>, ... }.
+      // Available bindings: steps (alias of ctx), input, and a few safe helpers.
+      const expr = String(step.expression ?? "");
+      try {
+        const steps = ctx;
+        const helpers = {
+          randomItem: <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)],
+          random: () => Math.random(),
+          now: () => Date.now(),
+          len: (x: any) => (x?.length ?? 0),
+        };
+        // eslint-disable-next-line no-new-func
+        const fn = new Function(
+          "steps", "input", "ctx", "randomItem", "random", "now", "len",
+          `"use strict"; return (${expr});`
+        );
+        const value = fn(steps, ctx.input ?? {}, ctx,
+          helpers.randomItem, helpers.random, helpers.now, helpers.len);
+        return value;
+      } catch (e) {
+        // Fallback to legacy template rendering so older workflows still work.
+        return { result: render(expr, ctx) };
+      }
     }
     case "condition": {
       const rendered = render(step.expression, ctx);

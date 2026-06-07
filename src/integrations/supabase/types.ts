@@ -14,6 +14,77 @@ export type Database = {
   }
   public: {
     Tables: {
+      endpoint_health: {
+        Row: {
+          avg_latency_ms: number | null
+          consecutive_failures: number
+          consecutive_successes: number
+          created_at: string
+          host: string
+          id: string
+          last_checked_at: string | null
+          last_error: string | null
+          last_failure_at: string | null
+          last_latency_ms: number | null
+          last_status: number | null
+          last_success_at: string | null
+          next_probe_at: string | null
+          state: string
+          tenant_id: string
+          total_calls: number
+          total_failures: number
+          updated_at: string
+        }
+        Insert: {
+          avg_latency_ms?: number | null
+          consecutive_failures?: number
+          consecutive_successes?: number
+          created_at?: string
+          host: string
+          id?: string
+          last_checked_at?: string | null
+          last_error?: string | null
+          last_failure_at?: string | null
+          last_latency_ms?: number | null
+          last_status?: number | null
+          last_success_at?: string | null
+          next_probe_at?: string | null
+          state?: string
+          tenant_id: string
+          total_calls?: number
+          total_failures?: number
+          updated_at?: string
+        }
+        Update: {
+          avg_latency_ms?: number | null
+          consecutive_failures?: number
+          consecutive_successes?: number
+          created_at?: string
+          host?: string
+          id?: string
+          last_checked_at?: string | null
+          last_error?: string | null
+          last_failure_at?: string | null
+          last_latency_ms?: number | null
+          last_status?: number | null
+          last_success_at?: string | null
+          next_probe_at?: string | null
+          state?: string
+          tenant_id?: string
+          total_calls?: number
+          total_failures?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "endpoint_health_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string

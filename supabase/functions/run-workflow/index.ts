@@ -102,10 +102,28 @@ async function runStep(node: DagNode, ctx: Record<string, any>) {
           ? render(step.body, ctx)
           : JSON.stringify(step.body)
         : undefined;
-      // Per-request timeout (15s) so a hung downstream cannot wedge the worker.
+
+      // Circuit-breaker: short-circuit if the host is currently open and we're
+      // not yet past the probe window. The runtime injects the admin client + tenant_id.
+      const host = safeHost(url);
+      const health = ctx.__admin && host
+        ? await readHealth(ctx.__admin, ctx.__tenant_id, host)
+        : null;
+      if (health?.state === "open" && health.next_probe_at && new Date(health.next_probe_at) > new Date()) {
+        const waitMs = new Date(health.next_probe_at).getTime() - Date.now();
+        const err: any = new Error(`circuit_open for ${host} — next probe in ${Math.ceil(waitMs/1000)}s`);
+        err.retryable = true;
+        err.circuit_open = true;
+        throw err;
+      }
+
+      // Per-request timeout — adapts to recent latency, capped 5s..30s.
+      const adaptiveTimeout = Math.min(30_000, Math.max(5_000, (health?.avg_latency_ms ?? 0) * 4 || 15_000));
       const ac = new AbortController();
-      const timer = setTimeout(() => ac.abort(), 15_000);
-      let res: Response;
+      const timer = setTimeout(() => ac.abort(), adaptiveTimeout);
+      const t0 = Date.now();
+      let res: Response | undefined;
+      let netErr: any;
       try {
         res = await fetch(url, {
           method: step.method ?? "GET",
@@ -113,12 +131,34 @@ async function runStep(node: DagNode, ctx: Record<string, any>) {
           body,
           signal: ac.signal,
         });
+      } catch (e) {
+        netErr = e;
       } finally {
         clearTimeout(timer);
       }
+      const latency = Date.now() - t0;
+
+      if (netErr || !res) {
+        if (ctx.__admin && host) await recordHealth(ctx.__admin, ctx.__tenant_id, host, { ok: false, status: 0, latency, error: String(netErr?.message ?? netErr ?? "network error") });
+        const err: any = new Error(`network: ${netErr?.message ?? netErr ?? "unknown"}`);
+        err.retryable = true;
+        throw err;
+      }
+
       const text = await res.text();
       let parsed: any = text;
       try { parsed = JSON.parse(text); } catch { /* keep text */ }
+
+      const ok = res.ok && (!step.expect_status || res.status === step.expect_status);
+      if (ctx.__admin && host) {
+        await recordHealth(ctx.__admin, ctx.__tenant_id, host, {
+          ok,
+          status: res.status,
+          latency,
+          error: ok ? null : String(text).slice(0, 200),
+        });
+      }
+
       if (step.expect_status && res.status !== step.expect_status) {
         const err: any = new Error(`http ${res.status} (expected ${step.expect_status})`);
         err.retryable = res.status >= 500 || res.status === 429;
@@ -129,7 +169,7 @@ async function runStep(node: DagNode, ctx: Record<string, any>) {
         err.retryable = res.status >= 500 || res.status === 429;
         throw err;
       }
-      return { status: res.status, body: parsed };
+      return { status: res.status, body: parsed, latency_ms: latency };
     }
     case "script": {
       // Evaluate the expression as a JS expression with access to prior step outputs.
@@ -189,6 +229,66 @@ function evalSafeBool(expr: string): boolean {
   return expr.trim().length > 0;
 }
 
+// ─────────── Endpoint health / circuit breaker ───────────
+function safeHost(u: string): string | null {
+  try { return new URL(u).host.toLowerCase(); } catch { return null; }
+}
+
+const FAILURE_THRESHOLD = 5;      // open after N consecutive failures
+const SUCCESS_TO_CLOSE = 2;       // close after N consecutive successes from half_open
+const OPEN_COOLDOWN_MS = 30_000;  // wait before allowing a probe
+
+async function readHealth(admin: any, tenant_id: string, host: string) {
+  const { data } = await admin.from("endpoint_health")
+    .select("*").eq("tenant_id", tenant_id).eq("host", host).maybeSingle();
+  return data;
+}
+
+async function recordHealth(
+  admin: any, tenant_id: string, host: string,
+  r: { ok: boolean; status: number; latency: number; error?: string | null },
+) {
+  const existing = await readHealth(admin, tenant_id, host);
+  const now = new Date();
+  const consecutive_failures = r.ok ? 0 : ((existing?.consecutive_failures ?? 0) + 1);
+  const consecutive_successes = r.ok ? ((existing?.consecutive_successes ?? 0) + 1) : 0;
+
+  // EWMA latency (alpha=0.3) so the timeout adapts to recent behavior.
+  const prevAvg = existing?.avg_latency_ms ?? r.latency;
+  const avg_latency_ms = Math.round(prevAvg * 0.7 + r.latency * 0.3);
+
+  let state: "closed" | "open" | "half_open" = (existing?.state as any) ?? "closed";
+  let next_probe_at: string | null = existing?.next_probe_at ?? null;
+
+  if (!r.ok) {
+    if (consecutive_failures >= FAILURE_THRESHOLD) {
+      state = "open";
+      next_probe_at = new Date(Date.now() + OPEN_COOLDOWN_MS).toISOString();
+    }
+  } else {
+    if (state === "open") {
+      state = "half_open";
+    } else if (state === "half_open" && consecutive_successes >= SUCCESS_TO_CLOSE) {
+      state = "closed";
+      next_probe_at = null;
+    }
+  }
+
+  const row = {
+    tenant_id, host, state,
+    consecutive_failures, consecutive_successes,
+    last_status: r.status, last_error: r.error ?? null,
+    last_latency_ms: r.latency, avg_latency_ms,
+    last_checked_at: now.toISOString(),
+    last_success_at: r.ok ? now.toISOString() : existing?.last_success_at ?? null,
+    last_failure_at: r.ok ? existing?.last_failure_at ?? null : now.toISOString(),
+    next_probe_at,
+    total_calls: (existing?.total_calls ?? 0) + 1,
+    total_failures: (existing?.total_failures ?? 0) + (r.ok ? 0 : 1),
+  };
+  await admin.from("endpoint_health").upsert(row, { onConflict: "tenant_id,host" });
+}
+
 async function withRetry<T>(
   node: DagNode,
   fn: () => Promise<T>,
@@ -216,12 +316,15 @@ async function withRetry<T>(
       // If the error explicitly marks itself non-retryable (e.g. 4xx other than 429), stop early.
       if (e && e.retryable === false) break;
       if (attempt < policy.max_attempts) {
-        const base = Math.min(
+        let base = Math.min(
           policy.backoff_ms * Math.pow(policy.multiplier, attempt - 1),
           policy.max_backoff_ms,
         );
+        // Circuit-open: extend backoff so we don't burn attempts during cooldown.
+        // Cap at 20s per retry slot to stay within global workflow timeout.
+        if (e?.circuit_open) base = Math.min(20_000, Math.max(base, 5_000));
         const wait = policy.jitter ? Math.floor(base * (0.5 + Math.random())) : base;
-        await log(`backing off ${wait}ms before retry`, "info");
+        await log(`backing off ${wait}ms before retry${e?.circuit_open ? " (circuit open)" : ""}`, "info");
         await new Promise((r) => setTimeout(r, wait));
       }
     }
@@ -322,7 +425,14 @@ Deno.serve(async (req) => {
 
     // Kick off async execution; respond immediately with run id.
     const exec = (async () => {
-      const ctx: Record<string, any> = { ...input, input: input ?? {} };
+      const ctx: Record<string, any> = {
+        ...input,
+        input: input ?? {},
+        // Hidden runtime handles used by http step for circuit-breaker / health updates.
+        // Underscore-prefixed keys are not addressable via `{{ steps.* }}` templates.
+        __admin: admin,
+        __tenant_id: wf.tenant_id,
+      };
       const startedAt = Date.now();
       const timeoutMs = dag.timeout_ms ?? 60_000;
       let failed = false;

@@ -383,14 +383,22 @@ Deno.serve(async (req) => {
                 await log(`✓ ${node.name} (${dur}ms)`, "info", nodeId);
               } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e);
-                failed = true;
+                const skip = !!node.continue_on_error;
+                if (!skip) failed = true;
+                // Make the error visible to downstream steps so they can branch on it.
+                ctx[nodeId] = { error: msg, ok: false, fallback: skip };
                 await admin.from("step_runs").update({
-                  status: "failed",
+                  status: skip ? "success" : "failed",
                   error: msg,
+                  output: skip ? ({ error: msg, ok: false, fallback: true } as any) : null,
                   finished_at: new Date().toISOString(),
                   duration_ms: Date.now() - stepStart,
                 }).eq("run_id", run.id).eq("step_key", nodeId);
-                await log(`✗ ${node.name}: ${msg}`, "error", nodeId);
+                await log(
+                  `${skip ? "⚠" : "✗"} ${node.name}: ${msg}${skip ? " (continue_on_error)" : ""}`,
+                  skip ? "warn" : "error",
+                  nodeId,
+                );
               }
             }),
           );

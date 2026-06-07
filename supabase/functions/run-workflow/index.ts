@@ -195,18 +195,33 @@ async function withRetry<T>(
   log: (msg: string, level?: string) => Promise<void>,
   setAttempts: (n: number) => Promise<void>,
 ): Promise<T> {
-  const policy = node.retry ?? { max_attempts: 1, backoff_ms: 1000, multiplier: 2 };
-  let lastErr: unknown;
+  // Stronger defaults for http steps: 3 attempts with capped exponential backoff + jitter.
+  const isHttp = node.step?.type === "http";
+  const policy = {
+    max_attempts: node.retry?.max_attempts ?? (isHttp ? 3 : 1),
+    backoff_ms: node.retry?.backoff_ms ?? 1000,
+    multiplier: node.retry?.multiplier ?? 2,
+    max_backoff_ms: node.retry?.max_backoff_ms ?? 15_000,
+    jitter: node.retry?.jitter ?? true,
+  };
+  let lastErr: any;
   for (let attempt = 1; attempt <= policy.max_attempts; attempt++) {
     await setAttempts(attempt);
     try {
       return await fn();
-    } catch (e) {
+    } catch (e: any) {
       lastErr = e;
       const msg = e instanceof Error ? e.message : String(e);
       await log(`attempt ${attempt}/${policy.max_attempts} failed: ${msg}`, "warn");
+      // If the error explicitly marks itself non-retryable (e.g. 4xx other than 429), stop early.
+      if (e && e.retryable === false) break;
       if (attempt < policy.max_attempts) {
-        const wait = policy.backoff_ms * Math.pow(policy.multiplier, attempt - 1);
+        const base = Math.min(
+          policy.backoff_ms * Math.pow(policy.multiplier, attempt - 1),
+          policy.max_backoff_ms,
+        );
+        const wait = policy.jitter ? Math.floor(base * (0.5 + Math.random())) : base;
+        await log(`backing off ${wait}ms before retry`, "info");
         await new Promise((r) => setTimeout(r, wait));
       }
     }

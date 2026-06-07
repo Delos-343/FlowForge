@@ -422,7 +422,14 @@ Deno.serve(async (req) => {
 
     // Kick off async execution; respond immediately with run id.
     const exec = (async () => {
-      const ctx: Record<string, any> = { ...input, input: input ?? {} };
+      const ctx: Record<string, any> = {
+        ...input,
+        input: input ?? {},
+        // Hidden runtime handles used by http step for circuit-breaker / health updates.
+        // Underscore-prefixed keys are not addressable via `{{ steps.* }}` templates.
+        __admin: admin,
+        __tenant_id: wf.tenant_id,
+      };
       const startedAt = Date.now();
       const timeoutMs = dag.timeout_ms ?? 60_000;
       let failed = false;

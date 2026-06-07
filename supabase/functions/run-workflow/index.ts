@@ -229,6 +229,66 @@ function evalSafeBool(expr: string): boolean {
   return expr.trim().length > 0;
 }
 
+// ─────────── Endpoint health / circuit breaker ───────────
+function safeHost(u: string): string | null {
+  try { return new URL(u).host.toLowerCase(); } catch { return null; }
+}
+
+const FAILURE_THRESHOLD = 5;      // open after N consecutive failures
+const SUCCESS_TO_CLOSE = 2;       // close after N consecutive successes from half_open
+const OPEN_COOLDOWN_MS = 30_000;  // wait before allowing a probe
+
+async function readHealth(admin: any, tenant_id: string, host: string) {
+  const { data } = await admin.from("endpoint_health")
+    .select("*").eq("tenant_id", tenant_id).eq("host", host).maybeSingle();
+  return data;
+}
+
+async function recordHealth(
+  admin: any, tenant_id: string, host: string,
+  r: { ok: boolean; status: number; latency: number; error?: string | null },
+) {
+  const existing = await readHealth(admin, tenant_id, host);
+  const now = new Date();
+  const consecutive_failures = r.ok ? 0 : ((existing?.consecutive_failures ?? 0) + 1);
+  const consecutive_successes = r.ok ? ((existing?.consecutive_successes ?? 0) + 1) : 0;
+
+  // EWMA latency (alpha=0.3) so the timeout adapts to recent behavior.
+  const prevAvg = existing?.avg_latency_ms ?? r.latency;
+  const avg_latency_ms = Math.round(prevAvg * 0.7 + r.latency * 0.3);
+
+  let state: "closed" | "open" | "half_open" = (existing?.state as any) ?? "closed";
+  let next_probe_at: string | null = existing?.next_probe_at ?? null;
+
+  if (!r.ok) {
+    if (consecutive_failures >= FAILURE_THRESHOLD) {
+      state = "open";
+      next_probe_at = new Date(Date.now() + OPEN_COOLDOWN_MS).toISOString();
+    }
+  } else {
+    if (state === "open") {
+      state = "half_open";
+    } else if (state === "half_open" && consecutive_successes >= SUCCESS_TO_CLOSE) {
+      state = "closed";
+      next_probe_at = null;
+    }
+  }
+
+  const row = {
+    tenant_id, host, state,
+    consecutive_failures, consecutive_successes,
+    last_status: r.status, last_error: r.error ?? null,
+    last_latency_ms: r.latency, avg_latency_ms,
+    last_checked_at: now.toISOString(),
+    last_success_at: r.ok ? now.toISOString() : existing?.last_success_at ?? null,
+    last_failure_at: r.ok ? existing?.last_failure_at ?? null : now.toISOString(),
+    next_probe_at,
+    total_calls: (existing?.total_calls ?? 0) + 1,
+    total_failures: (existing?.total_failures ?? 0) + (r.ok ? 0 : 1),
+  };
+  await admin.from("endpoint_health").upsert(row, { onConflict: "tenant_id,host" });
+}
+
 async function withRetry<T>(
   node: DagNode,
   fn: () => Promise<T>,

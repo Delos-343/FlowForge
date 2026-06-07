@@ -28,7 +28,8 @@ interface DagNode {
   id: string;
   name: string;
   step: any;
-  retry?: { max_attempts: number; backoff_ms: number; multiplier: number };
+  retry?: { max_attempts: number; backoff_ms: number; multiplier: number; max_backoff_ms?: number; jitter?: boolean };
+  continue_on_error?: boolean;
 }
 interface Dag {
   nodes: DagNode[];

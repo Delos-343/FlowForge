@@ -102,18 +102,33 @@ async function runStep(node: DagNode, ctx: Record<string, any>) {
           ? render(step.body, ctx)
           : JSON.stringify(step.body)
         : undefined;
-      const res = await fetch(url, {
-        method: step.method ?? "GET",
-        headers: { "Content-Type": "application/json", ...(step.headers ?? {}) },
-        body,
-      });
+      // Per-request timeout (15s) so a hung downstream cannot wedge the worker.
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 15_000);
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: step.method ?? "GET",
+          headers: { "Content-Type": "application/json", ...(step.headers ?? {}) },
+          body,
+          signal: ac.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
       const text = await res.text();
       let parsed: any = text;
       try { parsed = JSON.parse(text); } catch { /* keep text */ }
       if (step.expect_status && res.status !== step.expect_status) {
-        throw new Error(`http ${res.status} (expected ${step.expect_status})`);
+        const err: any = new Error(`http ${res.status} (expected ${step.expect_status})`);
+        err.retryable = res.status >= 500 || res.status === 429;
+        throw err;
       }
-      if (!res.ok) throw new Error(`http ${res.status}: ${text.slice(0, 200)}`);
+      if (!res.ok) {
+        const err: any = new Error(`http ${res.status}: ${String(text).slice(0, 200)}`);
+        err.retryable = res.status >= 500 || res.status === 429;
+        throw err;
+      }
       return { status: res.status, body: parsed };
     }
     case "script": {

@@ -316,12 +316,15 @@ async function withRetry<T>(
       // If the error explicitly marks itself non-retryable (e.g. 4xx other than 429), stop early.
       if (e && e.retryable === false) break;
       if (attempt < policy.max_attempts) {
-        const base = Math.min(
+        let base = Math.min(
           policy.backoff_ms * Math.pow(policy.multiplier, attempt - 1),
           policy.max_backoff_ms,
         );
+        // Circuit-open: extend backoff so we don't burn attempts during cooldown.
+        // Cap at 20s per retry slot to stay within global workflow timeout.
+        if (e?.circuit_open) base = Math.min(20_000, Math.max(base, 5_000));
         const wait = policy.jitter ? Math.floor(base * (0.5 + Math.random())) : base;
-        await log(`backing off ${wait}ms before retry`, "info");
+        await log(`backing off ${wait}ms before retry${e?.circuit_open ? " (circuit open)" : ""}`, "info");
         await new Promise((r) => setTimeout(r, wait));
       }
     }

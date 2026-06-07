@@ -102,10 +102,28 @@ async function runStep(node: DagNode, ctx: Record<string, any>) {
           ? render(step.body, ctx)
           : JSON.stringify(step.body)
         : undefined;
-      // Per-request timeout (15s) so a hung downstream cannot wedge the worker.
+
+      // Circuit-breaker: short-circuit if the host is currently open and we're
+      // not yet past the probe window. The runtime injects the admin client + tenant_id.
+      const host = safeHost(url);
+      const health = ctx.__admin && host
+        ? await readHealth(ctx.__admin, ctx.__tenant_id, host)
+        : null;
+      if (health?.state === "open" && health.next_probe_at && new Date(health.next_probe_at) > new Date()) {
+        const waitMs = new Date(health.next_probe_at).getTime() - Date.now();
+        const err: any = new Error(`circuit_open for ${host} — next probe in ${Math.ceil(waitMs/1000)}s`);
+        err.retryable = true;
+        err.circuit_open = true;
+        throw err;
+      }
+
+      // Per-request timeout — adapts to recent latency, capped 5s..30s.
+      const adaptiveTimeout = Math.min(30_000, Math.max(5_000, (health?.avg_latency_ms ?? 0) * 4 || 15_000));
       const ac = new AbortController();
-      const timer = setTimeout(() => ac.abort(), 15_000);
-      let res: Response;
+      const timer = setTimeout(() => ac.abort(), adaptiveTimeout);
+      const t0 = Date.now();
+      let res: Response | undefined;
+      let netErr: any;
       try {
         res = await fetch(url, {
           method: step.method ?? "GET",
@@ -113,12 +131,34 @@ async function runStep(node: DagNode, ctx: Record<string, any>) {
           body,
           signal: ac.signal,
         });
+      } catch (e) {
+        netErr = e;
       } finally {
         clearTimeout(timer);
       }
+      const latency = Date.now() - t0;
+
+      if (netErr || !res) {
+        if (ctx.__admin && host) await recordHealth(ctx.__admin, ctx.__tenant_id, host, { ok: false, status: 0, latency, error: String(netErr?.message ?? netErr ?? "network error") });
+        const err: any = new Error(`network: ${netErr?.message ?? netErr ?? "unknown"}`);
+        err.retryable = true;
+        throw err;
+      }
+
       const text = await res.text();
       let parsed: any = text;
       try { parsed = JSON.parse(text); } catch { /* keep text */ }
+
+      const ok = res.ok && (!step.expect_status || res.status === step.expect_status);
+      if (ctx.__admin && host) {
+        await recordHealth(ctx.__admin, ctx.__tenant_id, host, {
+          ok,
+          status: res.status,
+          latency,
+          error: ok ? null : String(text).slice(0, 200),
+        });
+      }
+
       if (step.expect_status && res.status !== step.expect_status) {
         const err: any = new Error(`http ${res.status} (expected ${step.expect_status})`);
         err.retryable = res.status >= 500 || res.status === 429;
@@ -129,7 +169,7 @@ async function runStep(node: DagNode, ctx: Record<string, any>) {
         err.retryable = res.status >= 500 || res.status === 429;
         throw err;
       }
-      return { status: res.status, body: parsed };
+      return { status: res.status, body: parsed, latency_ms: latency };
     }
     case "script": {
       // Evaluate the expression as a JS expression with access to prior step outputs.

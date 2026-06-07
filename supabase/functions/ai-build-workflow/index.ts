@@ -37,7 +37,9 @@ Rules:
 - Output a valid DAG (no cycles).
 - Node ids: lowercase, snake_case, unique, [a-z0-9_-], <= 32 chars.
 - Use 1..15 nodes. Prefer parallel edges when steps are independent.
-- Include retry policy on http steps: { max_attempts: 3, backoff_ms: 1000, multiplier: 2 }.
+- Include retry policy on http steps: { max_attempts: 3, backoff_ms: 1000, multiplier: 2, max_backoff_ms: 15000, jitter: true }.
+  The executor applies capped exponential backoff with jitter and only retries on 5xx / 429 / network errors (4xx fail fast).
+- For non-critical side-effects (logging, analytics, notifications, webhooks where failure should not abort the workflow), set "continue_on_error": true on the node. The step will be marked success with output { error, ok: false, fallback: true } so downstream steps can branch on {{ steps.<id>.ok }}.
 - timeout_ms: realistic global timeout (default 60000).
 
 CRITICAL — workflows MUST be runnable out of the box with no configuration:
@@ -105,8 +107,11 @@ const TOOL_SCHEMA = {
                   max_attempts: { type: "integer", minimum: 1, maximum: 10 },
                   backoff_ms: { type: "integer", minimum: 0 },
                   multiplier: { type: "number", minimum: 1 },
+                  max_backoff_ms: { type: "integer", minimum: 0 },
+                  jitter: { type: "boolean" },
                 },
               },
+              continue_on_error: { type: "boolean" },
             },
           },
         },

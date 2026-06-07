@@ -28,7 +28,8 @@ interface DagNode {
   id: string;
   name: string;
   step: any;
-  retry?: { max_attempts: number; backoff_ms: number; multiplier: number };
+  retry?: { max_attempts: number; backoff_ms: number; multiplier: number; max_backoff_ms?: number; jitter?: boolean };
+  continue_on_error?: boolean;
 }
 interface Dag {
   nodes: DagNode[];
@@ -101,18 +102,33 @@ async function runStep(node: DagNode, ctx: Record<string, any>) {
           ? render(step.body, ctx)
           : JSON.stringify(step.body)
         : undefined;
-      const res = await fetch(url, {
-        method: step.method ?? "GET",
-        headers: { "Content-Type": "application/json", ...(step.headers ?? {}) },
-        body,
-      });
+      // Per-request timeout (15s) so a hung downstream cannot wedge the worker.
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 15_000);
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: step.method ?? "GET",
+          headers: { "Content-Type": "application/json", ...(step.headers ?? {}) },
+          body,
+          signal: ac.signal,
+        });
+      } finally {
+        clearTimeout(timer);
+      }
       const text = await res.text();
       let parsed: any = text;
       try { parsed = JSON.parse(text); } catch { /* keep text */ }
       if (step.expect_status && res.status !== step.expect_status) {
-        throw new Error(`http ${res.status} (expected ${step.expect_status})`);
+        const err: any = new Error(`http ${res.status} (expected ${step.expect_status})`);
+        err.retryable = res.status >= 500 || res.status === 429;
+        throw err;
       }
-      if (!res.ok) throw new Error(`http ${res.status}: ${text.slice(0, 200)}`);
+      if (!res.ok) {
+        const err: any = new Error(`http ${res.status}: ${String(text).slice(0, 200)}`);
+        err.retryable = res.status >= 500 || res.status === 429;
+        throw err;
+      }
       return { status: res.status, body: parsed };
     }
     case "script": {
@@ -179,18 +195,33 @@ async function withRetry<T>(
   log: (msg: string, level?: string) => Promise<void>,
   setAttempts: (n: number) => Promise<void>,
 ): Promise<T> {
-  const policy = node.retry ?? { max_attempts: 1, backoff_ms: 1000, multiplier: 2 };
-  let lastErr: unknown;
+  // Stronger defaults for http steps: 3 attempts with capped exponential backoff + jitter.
+  const isHttp = node.step?.type === "http";
+  const policy = {
+    max_attempts: node.retry?.max_attempts ?? (isHttp ? 3 : 1),
+    backoff_ms: node.retry?.backoff_ms ?? 1000,
+    multiplier: node.retry?.multiplier ?? 2,
+    max_backoff_ms: node.retry?.max_backoff_ms ?? 15_000,
+    jitter: node.retry?.jitter ?? true,
+  };
+  let lastErr: any;
   for (let attempt = 1; attempt <= policy.max_attempts; attempt++) {
     await setAttempts(attempt);
     try {
       return await fn();
-    } catch (e) {
+    } catch (e: any) {
       lastErr = e;
       const msg = e instanceof Error ? e.message : String(e);
       await log(`attempt ${attempt}/${policy.max_attempts} failed: ${msg}`, "warn");
+      // If the error explicitly marks itself non-retryable (e.g. 4xx other than 429), stop early.
+      if (e && e.retryable === false) break;
       if (attempt < policy.max_attempts) {
-        const wait = policy.backoff_ms * Math.pow(policy.multiplier, attempt - 1);
+        const base = Math.min(
+          policy.backoff_ms * Math.pow(policy.multiplier, attempt - 1),
+          policy.max_backoff_ms,
+        );
+        const wait = policy.jitter ? Math.floor(base * (0.5 + Math.random())) : base;
+        await log(`backing off ${wait}ms before retry`, "info");
         await new Promise((r) => setTimeout(r, wait));
       }
     }
@@ -352,14 +383,22 @@ Deno.serve(async (req) => {
                 await log(`✓ ${node.name} (${dur}ms)`, "info", nodeId);
               } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e);
-                failed = true;
+                const skip = !!node.continue_on_error;
+                if (!skip) failed = true;
+                // Make the error visible to downstream steps so they can branch on it.
+                ctx[nodeId] = { error: msg, ok: false, fallback: skip };
                 await admin.from("step_runs").update({
-                  status: "failed",
+                  status: skip ? "success" : "failed",
                   error: msg,
+                  output: skip ? ({ error: msg, ok: false, fallback: true } as any) : null,
                   finished_at: new Date().toISOString(),
                   duration_ms: Date.now() - stepStart,
                 }).eq("run_id", run.id).eq("step_key", nodeId);
-                await log(`✗ ${node.name}: ${msg}`, "error", nodeId);
+                await log(
+                  `${skip ? "⚠" : "✗"} ${node.name}: ${msg}${skip ? " (continue_on_error)" : ""}`,
+                  skip ? "warn" : "error",
+                  nodeId,
+                );
               }
             }),
           );

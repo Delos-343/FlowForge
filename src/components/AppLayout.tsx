@@ -3,7 +3,7 @@ import { NavLink, useNavigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Workflow, LayoutDashboard, GitBranch, History, LogOut, Sparkles, Menu } from "lucide-react";
+import { Workflow, LayoutDashboard, GitBranch, History, LogOut, Sparkles, Menu, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -11,6 +11,7 @@ const nav = [
   { to: "/workflows", icon: GitBranch, label: "Workflows" },
   { to: "/runs", icon: History, label: "Runs" },
   { to: "/builder", icon: Sparkles, label: "AI Builder" },
+  { to: "/settings/team", icon: Users, label: "Team" },
 ];
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {

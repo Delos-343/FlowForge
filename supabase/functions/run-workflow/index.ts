@@ -451,9 +451,13 @@ Deno.serve(async (req) => {
 
       try {
         const layers = topoLayers(dag);
+        let cancelled = false;
         for (const layer of layers) {
           if (failed) break;
           if (Date.now() - startedAt > timeoutMs) { timedOut = true; break; }
+          const { data: latest } = await admin.from("runs")
+            .select("cancellation_requested").eq("id", run.id).maybeSingle();
+          if (latest?.cancellation_requested) { cancelled = true; break; }
 
           await Promise.all(
             layer.map(async (nodeId) => {
@@ -514,13 +518,15 @@ Deno.serve(async (req) => {
           );
         }
 
-        const finalStatus = timedOut ? "timeout" : failed ? "failed" : "success";
+        const finalStatus = cancelled ? "cancelled" : timedOut ? "timeout" : failed ? "failed" : "success";
         const dur = Date.now() - startedAt;
         await admin.from("runs").update({
           status: finalStatus,
           finished_at: new Date().toISOString(),
           duration_ms: dur,
-          error: timedOut ? "global timeout exceeded" : (failed ? "one or more steps failed" : null),
+          error: cancelled ? "cancelled by user"
+            : timedOut ? "global timeout exceeded"
+            : (failed ? "one or more steps failed" : null),
         }).eq("id", run.id);
         await log(`run ${finalStatus} in ${dur}ms`, finalStatus === "success" ? "info" : "error");
 

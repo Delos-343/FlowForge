@@ -2,3 +2,6 @@ project_id = "rzxnaxhnbjlaufbdaxnk"
 
 [functions.webhook-trigger]
 verify_jwt = false
+
+[functions.cron-dispatch]
+verify_jwt = false

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import DagView from "@/components/DagView";
-import { Play, Save, RotateCcw, ChevronLeft, Webhook, Copy, RefreshCw } from "lucide-react";
+import { Play, Save, RotateCcw, ChevronLeft, Webhook, Copy, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { DagSchema } from "@/lib/dag";
 
@@ -20,6 +20,8 @@ export default function WorkflowDetail() {
   const [activeVer, setActiveVer] = useState<any>(null);
   const [json, setJson] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [explaining, setExplaining] = useState(false);
 
   const load = async () => {
     if (!id) return;
@@ -111,6 +113,24 @@ export default function WorkflowDetail() {
     toast.success("Copied");
   };
 
+  const explain = async () => {
+    if (!wf) return;
+    setExplaining(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/explain-dag`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ workflow_id: wf.id }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error);
+      setExplanation(j.explanation);
+    } catch (e: any) {
+      toast.error(e.message ?? "failed");
+    } finally { setExplaining(false); }
+  };
+
   if (!wf || !activeVer) return <div className="p-4 sm:p-6 md:p-8 text-muted-foreground">Loading…</div>;
 
   let preview: any = null;
@@ -126,9 +146,20 @@ export default function WorkflowDetail() {
         </div>
       } />
       <div className="p-4 sm:p-6 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="surface p-4 lg:col-span-2">
-          <div className="text-xs font-mono text-muted-foreground mb-2">DAG PREVIEW</div>
+        <Card className="surface p-4 lg:col-span-2 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-mono text-muted-foreground">DAG PREVIEW</div>
+            <Button size="sm" variant="ghost" onClick={explain} disabled={explaining} className="h-7">
+              <Sparkles className="h-3 w-3 mr-1" />{explaining ? "Explaining…" : "Explain with AI"}
+            </Button>
+          </div>
           {preview?.nodes ? <DagView dag={preview} height={420} /> : <div className="h-[420px] grid place-items-center text-muted-foreground">Invalid DAG</div>}
+          {explanation && (
+            <div className="surface p-3 border border-primary/40 text-sm space-y-1">
+              <div className="text-xs font-mono text-primary flex items-center gap-1"><Sparkles className="h-3 w-3" />AI</div>
+              <p>{explanation}</p>
+            </div>
+          )}
         </Card>
         <div className="space-y-4">
           <Card className="surface p-4">

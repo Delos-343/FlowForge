@@ -14,6 +14,8 @@ import WorkflowDetail from "./pages/WorkflowDetail";
 import Runs from "./pages/Runs";
 import RunDetail from "./pages/RunDetail";
 import AIBuilder from "./pages/AIBuilder";
+import Team from "./pages/Team";
+import AcceptInvite from "./pages/AcceptInvite";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,6 +30,7 @@ const App = () => (
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/accept-invite" element={<AcceptInvite />} />
             <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/workflows" element={<Workflows />} />
@@ -35,6 +38,7 @@ const App = () => (
               <Route path="/runs" element={<Runs />} />
               <Route path="/runs/:id" element={<RunDetail />} />
               <Route path="/builder" element={<AIBuilder />} />
+              <Route path="/settings/team" element={<Team />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

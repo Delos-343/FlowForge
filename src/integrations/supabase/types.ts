@@ -85,6 +85,56 @@ export type Database = {
           },
         ]
       }
+      invitations: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string | null
+          role: Database["public"]["Enums"]["app_role"]
+          status: string
+          tenant_id: string
+          token: string
+          updated_at: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+          tenant_id: string
+          token: string
+          updated_at?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string | null
+          role?: Database["public"]["Enums"]["app_role"]
+          status?: string
+          tenant_id?: string
+          token?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invitations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
@@ -168,6 +218,7 @@ export type Database = {
       runs: {
         Row: {
           ai_diagnosis: string | null
+          cancellation_requested: boolean
           created_at: string
           duration_ms: number | null
           error: string | null
@@ -183,6 +234,7 @@ export type Database = {
         }
         Insert: {
           ai_diagnosis?: string | null
+          cancellation_requested?: boolean
           created_at?: string
           duration_ms?: number | null
           error?: string | null
@@ -198,6 +250,7 @@ export type Database = {
         }
         Update: {
           ai_diagnosis?: string | null
+          cancellation_requested?: boolean
           created_at?: string
           duration_ms?: number | null
           error?: string | null
@@ -388,7 +441,9 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean
+          last_scheduled_at: string | null
           name: string
+          next_run_at: string | null
           tenant_id: string
           updated_at: string
           webhook_token: string | null
@@ -401,7 +456,9 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          last_scheduled_at?: string | null
           name: string
+          next_run_at?: string | null
           tenant_id: string
           updated_at?: string
           webhook_token?: string | null
@@ -414,7 +471,9 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          last_scheduled_at?: string | null
           name?: string
+          next_run_at?: string | null
           tenant_id?: string
           updated_at?: string
           webhook_token?: string | null
@@ -434,6 +493,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      accept_invitation: { Args: { _token: string }; Returns: Json }
       can_edit: {
         Args: { _tenant: string; _user_id: string }
         Returns: boolean

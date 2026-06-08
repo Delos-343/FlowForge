@@ -146,9 +146,20 @@ export default function WorkflowDetail() {
         </div>
       } />
       <div className="p-4 sm:p-6 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="surface p-4 lg:col-span-2">
-          <div className="text-xs font-mono text-muted-foreground mb-2">DAG PREVIEW</div>
+        <Card className="surface p-4 lg:col-span-2 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-mono text-muted-foreground">DAG PREVIEW</div>
+            <Button size="sm" variant="ghost" onClick={explain} disabled={explaining} className="h-7">
+              <Sparkles className="h-3 w-3 mr-1" />{explaining ? "Explaining…" : "Explain with AI"}
+            </Button>
+          </div>
           {preview?.nodes ? <DagView dag={preview} height={420} /> : <div className="h-[420px] grid place-items-center text-muted-foreground">Invalid DAG</div>}
+          {explanation && (
+            <div className="surface p-3 border border-primary/40 text-sm space-y-1">
+              <div className="text-xs font-mono text-primary flex items-center gap-1"><Sparkles className="h-3 w-3" />AI</div>
+              <p>{explanation}</p>
+            </div>
+          )}
         </Card>
         <div className="space-y-4">
           <Card className="surface p-4">

@@ -20,7 +20,7 @@ export default function Workflows() {
 
   const load = async () => {
     if (!profile) return;
-    const { data } = await supabase.from("workflows").select("*").eq("tenant_id", profile.tenant_id).order("updated_at", { ascending: false });
+    const { data } = await supabase.from("workflows").select("id,tenant_id,name,description,current_version,is_active,cron_expression,created_by,created_at,updated_at").eq("tenant_id", profile.tenant_id).order("updated_at", { ascending: false });
     setItems(data ?? []);
   };
   useEffect(() => { load(); }, [profile]);

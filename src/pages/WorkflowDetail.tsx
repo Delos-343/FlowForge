@@ -23,8 +23,15 @@ export default function WorkflowDetail() {
 
   const load = async () => {
     if (!id) return;
-    const { data: w } = await supabase.from("workflows").select("*").eq("id", id).maybeSingle();
-    setWf(w);
+    const { data: w } = await supabase.from("workflows")
+      .select("id,tenant_id,name,description,current_version,is_active,cron_expression,created_by,created_at,updated_at")
+      .eq("id", id).maybeSingle();
+    let withToken: any = w;
+    if (w && canEdit) {
+      const { data: tok } = await (supabase as any).rpc("get_workflow_webhook_token", { _workflow_id: id });
+      withToken = { ...w, webhook_token: tok ?? null };
+    }
+    setWf(withToken);
     const { data: vs } = await supabase.from("workflow_versions").select("*").eq("workflow_id", id).order("version", { ascending: false });
     setVersions(vs ?? []);
     const cur = (vs ?? []).find(v => v.version === w?.current_version) ?? vs?.[0];

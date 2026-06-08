@@ -113,6 +113,24 @@ export default function WorkflowDetail() {
     toast.success("Copied");
   };
 
+  const explain = async () => {
+    if (!wf) return;
+    setExplaining(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/explain-dag`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ workflow_id: wf.id }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error);
+      setExplanation(j.explanation);
+    } catch (e: any) {
+      toast.error(e.message ?? "failed");
+    } finally { setExplaining(false); }
+  };
+
   if (!wf || !activeVer) return <div className="p-4 sm:p-6 md:p-8 text-muted-foreground">Loading…</div>;
 
   let preview: any = null;

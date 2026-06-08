@@ -61,8 +61,8 @@ export default function Team() {
 
   const changeRole = async (user_id: string, oldRole: string, newRole: string) => {
     if (!profile) return;
-    await supabase.from("user_roles").delete().eq("user_id", user_id).eq("tenant_id", profile.tenant_id).eq("role", oldRole);
-    await supabase.from("user_roles").insert({ user_id, tenant_id: profile.tenant_id, role: newRole });
+    await supabase.from("user_roles").delete().eq("user_id", user_id).eq("tenant_id", profile.tenant_id).eq("role", oldRole as any);
+    await supabase.from("user_roles").insert([{ user_id, tenant_id: profile.tenant_id, role: newRole as any }]);
     toast.success("Role updated");
     load();
   };

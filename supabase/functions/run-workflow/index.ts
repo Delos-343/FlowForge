@@ -236,7 +236,7 @@ function safeHost(u: string): string | null {
 
 const FAILURE_THRESHOLD = 5;      // open after N consecutive failures
 const SUCCESS_TO_CLOSE = 2;       // close after N consecutive successes from half_open
-const OPEN_COOLDOWN_MS = 30_000;  // wait before allowing a probe
+const OPEN_COOLDOWN_MS = 10_000;  // shorter cooldown so a probe can fire within a workflow run
 
 async function readHealth(admin: any, tenant_id: string, host: string) {
   const { data } = await admin.from("endpoint_health")

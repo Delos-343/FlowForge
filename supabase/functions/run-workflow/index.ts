@@ -298,10 +298,10 @@ async function withRetry<T>(
   // Stronger defaults for http steps: 3 attempts with capped exponential backoff + jitter.
   const isHttp = node.step?.type === "http";
   const policy = {
-    max_attempts: node.retry?.max_attempts ?? (isHttp ? 3 : 1),
-    backoff_ms: node.retry?.backoff_ms ?? 1000,
-    multiplier: node.retry?.multiplier ?? 2,
-    max_backoff_ms: node.retry?.max_backoff_ms ?? 15_000,
+    max_attempts: node.retry?.max_attempts ?? (isHttp ? 6 : 1),
+    backoff_ms: node.retry?.backoff_ms ?? 1500,
+    multiplier: node.retry?.multiplier ?? 3,
+    max_backoff_ms: node.retry?.max_backoff_ms ?? 45_000,
     jitter: node.retry?.jitter ?? true,
   };
   let lastErr: any;

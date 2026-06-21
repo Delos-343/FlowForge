@@ -295,16 +295,19 @@ async function withRetry<T>(
   log: (msg: string, level?: string) => Promise<void>,
   setAttempts: (n: number) => Promise<void>,
 ): Promise<T> {
-  // Tuned defaults for http steps: tighter retry window with full jitter so a single
-  // failing host can't blow the global workflow timeout while waiting on backoff.
+  // Global defaults for http steps. Backoff window is intentionally LONGER than the
+  // circuit-breaker cooldown (OPEN_COOLDOWN_MS) so retries don't fire while the
+  // circuit is still open. Per-node `retry` in the DAG still overrides these.
   const isHttp = node.step?.type === "http";
   const policy = {
-    max_attempts: node.retry?.max_attempts ?? (isHttp ? 5 : 1),
-    backoff_ms: node.retry?.backoff_ms ?? 800,
+    max_attempts: node.retry?.max_attempts ?? (isHttp ? 6 : 1),
+    backoff_ms: node.retry?.backoff_ms ?? 5_000,
     multiplier: node.retry?.multiplier ?? 2,
-    max_backoff_ms: node.retry?.max_backoff_ms ?? 8_000,
+    max_backoff_ms: node.retry?.max_backoff_ms ?? 30_000,
     jitter: node.retry?.jitter ?? true,
   };
+  // Decorrelated-jitter state — produces smoother spread than full jitter across attempts.
+  let prevWait = policy.backoff_ms;
   let lastErr: any;
   for (let attempt = 1; attempt <= policy.max_attempts; attempt++) {
     await setAttempts(attempt);
@@ -317,15 +320,24 @@ async function withRetry<T>(
       // If the error explicitly marks itself non-retryable (e.g. 4xx other than 429), stop early.
       if (e && e.retryable === false) break;
       if (attempt < policy.max_attempts) {
-        let base = Math.min(
+        const expBase = Math.min(
           policy.backoff_ms * Math.pow(policy.multiplier, attempt - 1),
           policy.max_backoff_ms,
         );
-        // Circuit-open: hold for ~cooldown but never longer than max_backoff_ms,
-        // so we don't burn the whole workflow timeout sitting idle.
-        if (e?.circuit_open) base = Math.min(policy.max_backoff_ms, Math.max(base, 4_000));
-        // Full jitter (AWS-style): wait = random(0, base). Avoids thundering-herd retries.
-        const wait = policy.jitter ? Math.floor(Math.random() * base) : base;
+        let wait: number;
+        if (e?.circuit_open) {
+          // Sleep until just past the next probe window so the breaker can half-open
+          // before we hit it again. Bounded by max_backoff_ms.
+          const probeIn = Math.max(OPEN_COOLDOWN_MS + 1_000, expBase);
+          wait = Math.min(policy.max_backoff_ms + OPEN_COOLDOWN_MS, probeIn);
+        } else if (policy.jitter) {
+          // Decorrelated jitter: random(base, prev*3), capped.
+          const hi = Math.min(policy.max_backoff_ms, Math.max(prevWait * 3, expBase));
+          wait = Math.floor(policy.backoff_ms + Math.random() * (hi - policy.backoff_ms));
+        } else {
+          wait = expBase;
+        }
+        prevWait = wait;
         await log(`backing off ${wait}ms before retry${e?.circuit_open ? " (circuit open)" : ""}`, "info");
         await new Promise((r) => setTimeout(r, wait));
       }

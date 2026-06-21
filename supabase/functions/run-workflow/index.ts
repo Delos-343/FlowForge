@@ -295,13 +295,14 @@ async function withRetry<T>(
   log: (msg: string, level?: string) => Promise<void>,
   setAttempts: (n: number) => Promise<void>,
 ): Promise<T> {
-  // Stronger defaults for http steps: 3 attempts with capped exponential backoff + jitter.
+  // Tuned defaults for http steps: tighter retry window with full jitter so a single
+  // failing host can't blow the global workflow timeout while waiting on backoff.
   const isHttp = node.step?.type === "http";
   const policy = {
-    max_attempts: node.retry?.max_attempts ?? (isHttp ? 6 : 1),
-    backoff_ms: node.retry?.backoff_ms ?? 1500,
-    multiplier: node.retry?.multiplier ?? 3,
-    max_backoff_ms: node.retry?.max_backoff_ms ?? 45_000,
+    max_attempts: node.retry?.max_attempts ?? (isHttp ? 5 : 1),
+    backoff_ms: node.retry?.backoff_ms ?? 800,
+    multiplier: node.retry?.multiplier ?? 2,
+    max_backoff_ms: node.retry?.max_backoff_ms ?? 8_000,
     jitter: node.retry?.jitter ?? true,
   };
   let lastErr: any;
@@ -320,10 +321,11 @@ async function withRetry<T>(
           policy.backoff_ms * Math.pow(policy.multiplier, attempt - 1),
           policy.max_backoff_ms,
         );
-        // Circuit-open: extend backoff so we don't burn attempts during cooldown.
-        // Cap at 20s per retry slot to stay within global workflow timeout.
-        if (e?.circuit_open) base = Math.min(20_000, Math.max(base, 5_000));
-        const wait = policy.jitter ? Math.floor(base * (0.5 + Math.random())) : base;
+        // Circuit-open: hold for ~cooldown but never longer than max_backoff_ms,
+        // so we don't burn the whole workflow timeout sitting idle.
+        if (e?.circuit_open) base = Math.min(policy.max_backoff_ms, Math.max(base, 4_000));
+        // Full jitter (AWS-style): wait = random(0, base). Avoids thundering-herd retries.
+        const wait = policy.jitter ? Math.floor(Math.random() * base) : base;
         await log(`backing off ${wait}ms before retry${e?.circuit_open ? " (circuit open)" : ""}`, "info");
         await new Promise((r) => setTimeout(r, wait));
       }

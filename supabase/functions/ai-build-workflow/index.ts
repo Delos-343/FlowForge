@@ -181,6 +181,15 @@ Deno.serve(async (req) => {
       return json({ error: "AI returned no nodes" }, 500);
     }
 
+    // Normalize: auto-mark side-effect nodes as continue_on_error so a flaky
+    // notification endpoint never fails an otherwise-good run.
+    const sideEffectRe = /(notif|log|analyt|webhook|alert|track|report|email|slack|discord|telemetr|metric|audit)/i;
+    for (const n of parsed.nodes) {
+      if (n?.step?.type === "http" && (sideEffectRe.test(n.id ?? "") || sideEffectRe.test(n.name ?? ""))) {
+        if (n.continue_on_error !== false) n.continue_on_error = true;
+      }
+    }
+
     return json({
       name: String(parsed.name ?? "Untitled"),
       description: String(parsed.description ?? ""),

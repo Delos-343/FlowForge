@@ -511,7 +511,12 @@ Deno.serve(async (req) => {
                 await log(`✓ ${node.name} (${dur}ms)`, "info", nodeId);
               } catch (e) {
                 const msg = e instanceof Error ? e.message : String(e);
-                const skip = !!node.continue_on_error;
+                // Adaptive soft-fail: if the node is clearly a side-effect (notify/log/
+                // analytics/webhook/alert/track/report/email/slack/discord), treat as
+                // continue_on_error even when the DAG author forgot to set the flag.
+                const sideEffectRe = /(notif|log|analyt|webhook|alert|track|report|email|slack|discord|telemetr|metric|audit)/i;
+                const looksSoft = sideEffectRe.test(node.id) || sideEffectRe.test(node.name ?? "");
+                const skip = !!node.continue_on_error || looksSoft;
                 if (!skip) failed = true;
                 // Make the error visible to downstream steps so they can branch on it.
                 ctx[nodeId] = { error: msg, ok: false, fallback: skip };
@@ -523,7 +528,7 @@ Deno.serve(async (req) => {
                   duration_ms: Date.now() - stepStart,
                 }).eq("run_id", run.id).eq("step_key", nodeId);
                 await log(
-                  `${skip ? "⚠" : "✗"} ${node.name}: ${msg}${skip ? " (continue_on_error)" : ""}`,
+                  `${skip ? "⚠" : "✗"} ${node.name}: ${msg}${skip ? (node.continue_on_error ? " (continue_on_error)" : " (auto-soft: side-effect step)") : ""}`,
                   skip ? "warn" : "error",
                   nodeId,
                 );

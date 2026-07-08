@@ -391,6 +391,36 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Per-tenant rate limit. Manual + webhook runs share this bucket so a
+    // hot webhook can't starve UI-triggered runs. Configurable via env.
+    const rlLimit = Number(Deno.env.get("RATE_LIMIT_RUNS_PER_MIN") ?? "60");
+    const rlWindow = Number(Deno.env.get("RATE_LIMIT_WINDOW_SECONDS") ?? "60");
+    const { data: rl, error: rlErr } = await admin.rpc("check_rate_limit", {
+      _tenant_id: wf.tenant_id,
+      _bucket: "run-workflow",
+      _limit: rlLimit,
+      _window_seconds: rlWindow,
+    });
+    const rlRow = Array.isArray(rl) ? rl[0] : rl;
+    if (!rlErr && rlRow && rlRow.allowed === false) {
+      const resetAt = rlRow.reset_at ?? new Date(Date.now() + rlWindow * 1000).toISOString();
+      const retryAfter = Math.max(1, Math.ceil((new Date(resetAt).getTime() - Date.now()) / 1000));
+      return new Response(
+        JSON.stringify({ error: "rate_limited", limit: rlLimit, window_seconds: rlWindow, reset_at: resetAt }),
+        {
+          status: 429,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            "Retry-After": String(retryAfter),
+            "X-RateLimit-Limit": String(rlLimit),
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": resetAt,
+          },
+        },
+      );
+    }
+
     const targetVersion = version ?? wf.current_version;
     const { data: ver } = await admin
       .from("workflow_versions")

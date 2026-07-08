@@ -42,6 +42,37 @@ Deno.serve(async (req) => {
     if (wfErr || !wf) return json({ error: "invalid webhook token" }, 404);
     if (!wf.is_active) return json({ error: "workflow disabled" }, 409);
 
+    // Per-tenant rate limit for public webhook triggers.
+    const rlLimit = Number(Deno.env.get("RATE_LIMIT_WEBHOOK_PER_MIN") ?? "30");
+    const rlWindow = Number(Deno.env.get("RATE_LIMIT_WINDOW_SECONDS") ?? "60");
+    const { data: rl } = await admin.rpc("check_rate_limit", {
+      _tenant_id: wf.tenant_id,
+      _bucket: "webhook-trigger",
+      _limit: rlLimit,
+      _window_seconds: rlWindow,
+    });
+    const rlRow = Array.isArray(rl) ? rl[0] : rl;
+    if (rlRow && rlRow.allowed === false) {
+      const resetAt = rlRow.reset_at ?? new Date(Date.now() + rlWindow * 1000).toISOString();
+      const retryAfter = Math.max(1, Math.ceil((new Date(resetAt).getTime() - Date.now()) / 1000));
+      return new Response(
+        JSON.stringify({ error: "rate_limited", limit: rlLimit, window_seconds: rlWindow, reset_at: resetAt }),
+        {
+          status: 429,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            "Retry-After": String(retryAfter),
+            "X-RateLimit-Limit": String(rlLimit),
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": resetAt,
+          },
+        },
+      );
+    }
+
+
+
     // Create run row directly (avoid re-auth path)
     const { data: run, error: runErr } = await admin
       .from("runs")

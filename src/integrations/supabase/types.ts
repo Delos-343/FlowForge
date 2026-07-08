@@ -167,6 +167,30 @@ export type Database = {
           },
         ]
       }
+      rate_limit_counters: {
+        Row: {
+          bucket: string
+          count: number
+          tenant_id: string
+          updated_at: string
+          window_start: string
+        }
+        Insert: {
+          bucket: string
+          count?: number
+          tenant_id: string
+          updated_at?: string
+          window_start?: string
+        }
+        Update: {
+          bucket?: string
+          count?: number
+          tenant_id?: string
+          updated_at?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       run_logs: {
         Row: {
           created_at: string
@@ -497,6 +521,19 @@ export type Database = {
       can_edit: {
         Args: { _tenant: string; _user_id: string }
         Returns: boolean
+      }
+      check_rate_limit: {
+        Args: {
+          _bucket: string
+          _limit: number
+          _tenant_id: string
+          _window_seconds?: number
+        }
+        Returns: {
+          allowed: boolean
+          remaining: number
+          reset_at: string
+        }[]
       }
       get_user_tenant: { Args: { _user_id: string }; Returns: string }
       get_workflow_webhook_token: {
